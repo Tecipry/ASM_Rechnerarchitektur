@@ -40,7 +40,6 @@ s_offen
     goto    weiter
 s_geschl
     RRF     counter
-;PROBLEM: RLF & RRF loopen über carry -> der Ausgang ist zwischenzeitig aus
 
 weiter
     btfsc   status, carry   ;nicht auf portb schreiben, falls carry gesetzt
