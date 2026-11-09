@@ -1,0 +1,50 @@
+;***************************************
+;           testProgramm.src
+;           02.11.2026
+;***************************************
+
+;**** VARIABLEN ****
+status  equ 3   ;Statusregister hat Adr. 3
+porta   equ 5   ;PORT A hat Adr. 5
+portb   equ 6   ;PORT B hat Adr. 6
+trisa   equ 5   ;TRIS A hat Adr. 5
+trisb   equ 6
+; Bits
+rp0     equ 5   ;Umschaltbit zw. Bank 0 & 1
+zerofl  equ 2   ;zeroflag im Statusregister (Bit 2)
+reset   equ 1   ;RESET Bit
+inhibit equ 2   ;INHIBIT Bit
+carry   equ 3   ;CARRY Bit (Eingang)
+
+pcl     equ 02  ;lowbyte des Programmzählers
+counter equ 0ch ;Zähler
+
+    device 16f84
+    org 0
+
+cold
+    clrf    counter
+loop
+    movf    counter, w
+    call    convert         ;Zahl in w umsetzen in 7-Segmentmuster
+    goto    loop
+convert
+    andlw   15          ;Wert in w auf 15 begrenzen
+    addwf   pcl         ;Spung in die Tabelle
+    retlw   00111111b   ;0
+    retlw   00000110b   ;1
+    retlw   01011011b   ;2
+    retlw   01001111b   ;3
+    retlw   01100110b   ;4
+    retlw   01101101b   ;5
+    retlw   01111101b   ;6
+    retlw   00000111b   ;7
+    retlw   01111111b   ;8
+    retlw   01101111b   ;9
+    retlw   00000000b   ;10 - blank
+    retlw   00000000b   ;11 - blank
+    retlw   00000000b   ;12 - blank
+    retlw   00000000b   ;13 - blank
+    retlw   00000000b   ;14 - blank
+
+    end

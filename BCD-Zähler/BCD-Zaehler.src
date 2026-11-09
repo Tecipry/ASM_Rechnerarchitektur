@@ -1,0 +1,147 @@
+;***************************************
+;           binaerzaehler.src
+;           26.10.2026
+;***************************************
+
+;**** VARIABLEN ****
+status  equ 3   ;Statusregister hat Adr. 3
+porta   equ 5   ;PORT A hat Adr. 5
+portb   equ 6   ;PORT B hat Adr. 6
+trisa   equ 5   ;TRIS A hat Adr. 5
+trisb   equ 6
+; Bits
+rp0     equ 5   ;Umschaltbit zw. Bank 0 & 1
+zerofl  equ 2   ;zeroflag im Statusregister (Bit 2)
+reset   equ 1   ;RESET Bit
+inhibit equ 2   ;INHIBIT Bit
+carry   equ 3   ;CARRY Bit (Eingang)
+
+digit0  equ 6   ;RA6
+digit1  equ 7   ;RA7
+
+counter equ 0ch ;Zählervariable (Siehe Aufteilung der Bank -> freier Speicherbereich beginnt hier)
+aTakt   equ 0dh ;Vergleichsvariable Takt (dirkt nach Zählervariable)
+pcl     equ 02  ;lowbyte Programmzähler
+
+
+    device  16f84   ;Assembler direktive -> welcher Prozessor
+    org     0       ;Programm beginnt bei Adresse 0 (org -> origin)
+
+cold    ;LABEL
+init    ;LABEL init
+    bsf     status, rp0     ;Umschalten auf Bank 1
+    movlw   00110111b       ;ra3, ra6, ra7 -> Ausgang, ra0-2 -> Eingang
+    movwf   trisa           ;move w into trisa
+    ;w wird als temporärer Speicher verwendet. Es kann nicht direkt in trisa geschrieben werden, weil der Befehl die Zieladresse & den Wert bekommen müsste, was zu viel für den Befehlsraum ist.
+    clrf    trisb           ;Port B aus Ausgang setzen -> für Zählerausgang
+    bcf     status, rp0     ;Umschalten auf Bank 0
+
+    bsf     porta, digit0   ;inaktiv setzen
+    bsf     porta, digit1   ;inaktiv setzen
+    movf    porta, w        ;Startzustand des Takteingangs
+    andlw   1               ;w AND 00000001 (Takt ist Bit0 -> maskieren)
+    movwf   aTakt           ;für späteren Vergleich
+
+;RESET prüfen
+checkReset
+    btfss  porta, reset     ;Skip wenn reset ist high ("Bit test f, Skip if Set")
+    goto    checkInhibit    ;kein reset -> zu inhibit springen
+    clrf    counter         ;Zähler auf null
+    movf    counter, w      ;Zählerinhalt nach w (w ist einfach schon definiert in diesem ASM)
+    movwf   portb           ;w auf Ausgang
+    goto    checkReset
+
+checkInhibit
+    btfsc  porta, inhibit   ;Skip wenn inhibit ist low ("Bit test f, Skip if Clear")
+    goto checkReset         ;Springe zu reset (weil inhibit high ist)
+
+checkRisingEdge
+    movf    porta, w        ;portA in w einlesen
+    andlw   1               ;Taktbit isolieren (maskieren mit 00000001)
+    xorwf   aTakt, w        ;XOR alter Takt & w -> Ergebnis ins w register (durch ",w")
+                            ;Ergebnis als zeroflag -> ist gesetzt, wenn Ergebnis =0
+                                ;aTakt == w -> zeroflag z = 1
+                                ;aTakt != w -> zeroflag z = 0 (Flanke gefunden)
+    btfsc   status, zerofl  ;Skip if z=0
+    goto    checkReset      ;keine Flanke
+
+edgeFiltering
+    xorwf   aTakt           ;Inhalt von aTakt (Bit 0) invertiert
+                            ;XOR mit w Register -> steht 1 drinne -> XOR invertiert aTakt
+    btfss   aTakt, 0        ;bei rising edge -> vorher war 0, prüfen auf 1 weil eben invertiert
+    goto    checkReset      ;falsche Taktflanke
+
+count
+    bcf     porta, carry    ;carry zurücksetzen
+    incf    counter         ;hochzählen, zeroflag wird gesetzt wenn Ergebnis = 0
+    movf    counter, w
+    andlw   0fh             ;obere 4 Bits auf 0 maskieren
+    xorlw   0ah             ;Vergleich mit "10" durch XOR
+                                ;sind gleich: Ergebnis = 0; zerofl == 1
+                                ;sind ungleich: zerofl == 0
+    btfss   status, zerofl  ;direkt zu Ausgabe wenn ungleich
+    goto    ausgabe
+;untere 4 Bits im Counter auf 0 -> durch AND mit A0h
+;    movlw   0f0h            ;startet mit 0 weil es eine Zahl ist (Wert: f0)
+;    andwf   counter         ;Ergebnis in counter
+;obere 4 Bits um 1 erhöhen -> +16
+;    movlw   10h
+;    addwf   counter         ;+16, Ergebnis im counter
+    movlw   6               ;10+6 -> L wird 0, H++
+    addwf   counter         ;
+
+;Vergleich ob H=10
+    movf    counter, w
+    andlw   0f0h            ;maskieren -> untere 4 Bits auf 0
+    xorlw   0a0h
+    btfss   status, zerofl
+    goto    ausgabe         ;0a0h nicht erreicht -> zur Ausgabe
+
+    clrf    counter         ;counter auf 0
+    bsf     porta, carry    ;set carry flag
+
+ausgabe
+    ;niederwertigen Teil anzeigen
+    movf    counter, w      ;Counter auf w schreiben
+    call    convert         ;Counter in w mit Wert für 7-Segment-Display überschreiben
+    movwf   portb           ;und auf portb
+    bcf     porta, digit0   ;digit0 kurz setzen, um Anzeige zu updaten
+    bsf     porta, digit0   ;und wieder clearen -> Wert wurde übernommen
+    ;höherwertigen Teil anzeigen
+        ;1. auf 0 prüfen (für Nullenunterdrückung)
+    movlw   11110000b       ;Maske für Nullunterdrückung
+    andwf   counter, w      ;wenn 0, dann zerofl gesetzt (=1)
+    btfsc   status, zerofl
+    goto    ausgabe1
+
+    swapf   counter, w      ;oberes und unteres halbbyte tauschen (in w schreiben, counter unverändert)
+    call    convert
+
+ausgabe1
+    movwf   portb
+    bcf     porta, digit1   ;Impuls
+    bsf     porta, digit1
+
+
+    goto    checkReset
+
+convert
+    andlw   15          ;Wert in w auf 15 begrenzen
+    addwf   pcl         ;Sprung in die Tabelle
+    retlw   00111111b   ;0
+    retlw   00000110b   ;1
+    retlw   01011011b   ;2
+    retlw   01001111b   ;3
+    retlw   01100110b   ;4
+    retlw   01101101b   ;5
+    retlw   01111101b   ;6
+    retlw   00000111b   ;7
+    retlw   01111111b   ;8
+    retlw   01101111b   ;9
+    retlw   00000000b   ;10 - blank
+    retlw   00000000b   ;11 - blank
+    retlw   00000000b   ;12 - blank
+    retlw   00000000b   ;13 - blank
+    retlw   00000000b   ;14 - blank
+
+    end

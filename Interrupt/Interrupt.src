@@ -1,0 +1,107 @@
+;***************************************
+;           Interrupt.src
+;           09.11.2026
+;***************************************
+
+;**** VARIABLEN ****
+status  equ 3           ;status Register
+rp0     equ 5           ;Umschaltbit zw. Bank 0 & 1
+porta   equ 5           ;PORT A hat Adr. 5
+portb   equ 6           ;PORT B hat Adr. 6
+trisa   equ 5           ;TRIS A hat Adr. 5
+trisb   equ 6
+zerofl  equ 2           ;zeroflag im Statusregister (Bit 2)
+carry   equ 0           ;carry Bit
+
+intcon  equ 0bh         ;INTCON Register
+option  equ 1           ;OPTION_REG Register
+t0ie    equ 5           ;t0ie Bit
+t0cs    equ 5           ;t0cs Bit
+t0se    equ 4           ;t0se Bit
+t0if    equ 2           ;t0if Bit
+psa     equ 3           ;psa Bit
+gie     equ 7           ;gie Bit (global Interrupt enable)
+led     equ 0           ;LED an porta
+timer0  equ 1           ;TMR0 Register (timer für Interrupts)
+intedg  equ 6
+inte    equ 4
+intf    equ 1
+
+counter equ 10h         ;Counter Variable
+save_w  equ 20h         ;w-Register für ISR sichern
+save_s  equ 21h         ;statusregister sichern
+
+
+    device  16f84
+    org 0               ;gibt Adressen des Programms an ("Hiernach liegt beginnt Adresse 0")
+cold
+    goto    start               ;überspringen der ISR bei Programmstart
+;ISR (Interrupt Service Routine) startet bei Adresse 4 (ist so definiert)
+    nop         ;als Lückenfüller
+    nop         ;alternativ ein "org 4" nutzen
+    nop
+
+ISR
+;erstens: Register sichern (bei größeren MC -> über stack; hier über variablen)
+;Siehe: PIC16F8x_20210412.pdf Seite 50
+    movwf   save_w              ;w sichern
+    swapf   status, w
+    movwf   save_s              ;status sichern
+
+;zweitens: Unterscheidung, woher der Interrupt kommt
+    btfsc   intcon, t0if        ;hat TMR0 Interrupt ausgelöst?
+    goto    int_t0
+    btfsc   intcon, intf        ;hat RB0 Interrupt ausgelöst?
+    goto    int_rb0
+    goto    int_end             ;sollte eigentlich nicht passieren
+
+int_t0
+    movlw   1                   ;togglen der LED
+    XORWF   porta, led
+    movlw   240
+    movwf   timer0
+    BCF     intcon, t0if        ;Interruptflag von TM0 löschen -> muss innerhalb der ISR geschehen
+    goto int_end
+
+int_rb0
+    clrf    timer0              ;Timer0 einfach zurücksetzen
+    bcf     intcon, intf        ;Interruptflag zurücksetzen
+    goto    int_end
+
+int_end
+    ;Zustand von w und status wiederherstellen
+    swapf   save_s, w
+    movwf   status
+    swapf   save_w
+    swapf   save_w, w           ;durch doppelten swap wird zerofl ebenfalls wieder hergestellt
+
+    retfie                      ;"return from interrupt enable", Interruptende:
+                                    ;1. zurückspringen
+                                    ;2. GIE zurück auf 1 (wird beim Start von ISR auf 0 gesetzt)
+
+start
+;OPTION Register nur auf Bank 1
+    BSF     status, rp0         ;---Umschalten auf Bank 1---
+    BSF     option, t0cs        ;RA4 als Takteingang
+    BCF     option, t0se        ;steigende Flanke -> aktive Flanke
+    BSF     option, psa         ;prescaler an watchdog, nicht an timer 0
+    BSF     option, intedg      ;steigende Flanke an RB0
+    BCF     status, rp0         ;---Umschalten auf Bank 0---
+
+
+;Nutzung irgendwann im Hauptprogramm
+    BCF     intcon, t0if        ;Sicherheitshalber flag auf 0 setzen, damit Interrupt nicht instant auslösen kann
+    BSF     intcon, gie         ;Interrupts freischalten
+    BCF     intcon, intf
+    BSF     intcon, inte        ;Interrupt an RB0 freigeben
+    BSF     intcon, t0ie        ;Timer 0 Interrupt freigeben
+
+
+loop
+    movf    counter, w          ;counter ins w Register
+    addlw   1                   ;w inkrementieren
+    movwf   counter             ;zurückschreiben
+    goto    loop
+
+
+    end

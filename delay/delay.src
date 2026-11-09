@@ -1,0 +1,35 @@
+;***************************************
+;           delay.src
+;           02.11.2026
+;***************************************
+
+;**** VARIABLEN ****
+status  equ 3   ;Statusregister hat Adr. 3
+porta   equ 5   ;PORT A hat Adr. 5
+portb   equ 6   ;PORT B hat Adr. 6
+trisa   equ 5   ;TRIS A hat Adr. 5
+trisb   equ 6
+; Bits
+rp0     equ 5   ;Umschaltbit zw. Bank 0 & 1
+zerofl  equ 2   ;zeroflag im Statusregister (Bit 2)
+reset   equ 1   ;RESET Bit
+inhibit equ 2   ;INHIBIT Bit
+carry   equ 3   ;CARRY Bit (Eingang)
+
+pcl     equ 02  ;lowbyte des Programmzählers
+counter equ 0ch ;Zähler
+
+    device 16f84
+    org 0
+
+cold
+    movlw   41      ;Startwert
+    movwf   counter
+loop
+    decf    counter
+    btfss   status, zerofl
+    goto    loop
+ende
+    goto ende
+
+    end

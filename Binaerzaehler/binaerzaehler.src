@@ -1,0 +1,77 @@
+;***************************************
+;           binaerzaehler.src
+;           26.10.2026
+;***************************************
+
+;**** VARIABLEN ****
+status  equ 3   ;Statusregister hat Adr. 3
+porta   equ 5   ;PORT A hat Adr. 5
+portb   equ 6   ;PORT B hat Adr. 6
+trisa   equ 5   ;TRIS A hat Adr. 5
+trisb   equ 6
+; Bits
+rp0     equ 5   ;Umschaltbit zw. Bank 0 & 1
+zerofl  equ 2   ;zeroflag im Statusregister (Bit 2)
+reset   equ 1   ;RESET Bit
+inhibit equ 2   ;INHIBIT Bit
+carry   equ 3   ;CARRY Bit (Eingang)
+
+counter equ 0ch ;Zählervariable (Siehe Aufteilung der Bank -> freier Speicherbereich beginnt hier)
+aTakt   equ 0dh ;Vergleichsvariable Takt (dirkt nach Zählervariable)
+
+
+    device  16f84   ;Assembler direktive -> welcher Prozessor
+    org     0       ;Programm beginnt bei Adresse 0 (org -> origin)
+
+cold    ;LABEL
+init    ;LABEL init
+    bsf     status, rp0     ;Umschalten auf Bank 1
+    movlw   11110111b       ;ra3 -> Ausgang, ra0-2 -> Eingang
+    movwf   trisa           ;move w into trisa
+    ;w wird als temporärer Speicher verwendet. Es kann nicht direkt in trisa geschrieben werden, weil der Befehl die Zieladresse & den Wert bekommen müsste, was zu viel für den Befehlsraum ist.
+    clrf    trisb           ;Port B aus Ausgang setzen -> für Zählerausgang
+    bcf     status, rp0     ;Umschalten auf Bank 0
+
+    movf    porta, w         ;Startzustand des Takteingangs
+    andlw   1               ;w AND 00000001 (Takt ist Bit0 -> maskieren)
+    movwf   aTakt           ;für späteren Vergleich
+
+;RESET prüfen
+checkReset
+    btfss  porta, reset     ;Skip wenn reset ist high ("Bit test f, Skip if Set")
+    goto    checkInhibit    ;kein reset -> zu inhibit springen
+    clrf    counter         ;Zähler auf null
+    movf    counter, w      ;Zählerinhalt nach w (w ist einfach schon definiert in diesem ASM)
+    movwf   portb           ;w auf Ausgang
+    goto    checkReset
+
+checkInhibit
+    btfsc  porta, inhibit   ;Skip wenn inhibit ist low ("Bit test f, Skip if Clear")
+    goto checkReset         ;Springe zu reset (weil inhibit high ist)
+
+checkRisingEdge
+    movf    porta, w        ;portA in w einlesen
+    andlw   1               ;Taktbit isolieren (maskieren mit 00000001)
+    xorwf   aTakt, w        ;XOR alter Takt & w -> Ergebnis ins w register (durch ",w")
+                            ;Ergebnis als zeroflag -> ist gesetzt, wenn Ergebnis =0
+                                ;aTakt == w -> zeroflag z = 1
+                                ;aTakt != w -> zeroflag z = 0 (Flanke gefunden)
+    btfsc   status, zerofl  ;Skip if z=0
+    goto    checkReset      ;keine Flanke
+
+edgeFiltering
+    xorwf   aTakt           ;Inhalt von aTakt (Bit 0) invertiert
+                            ;XOR mit w Register -> steht 1 drinne -> XOR invertiert aTakt
+    btfss   aTakt, 0        ;bei rising edge -> vorher war 0, prüfen auf 1 weil eben invertiert
+    goto    checkReset      ;falsche Taktflanke
+
+count
+    bcf     porta, carry    ;carry zurücksetzen
+    incf    counter         ;hochzählen, zeroflag wird gesetzt wenn Ergebnis = 0
+    btfsc   status, zerofl  ;skip wenn counter != 0
+    bsf     porta, carry    ;set carry flag
+    movf    counter, w      ;Counter auf w schreiben
+    movwf   portb           ;und auf portb
+    goto checkReset
+
+    end

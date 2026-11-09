@@ -1,0 +1,37 @@
+;***************************************
+;           Test01.src
+;           19.10.2026
+;***************************************
+
+;**** VARIABLEN ****
+status  equ 3   ;Statusregister hat Adr. 3
+rp0     equ 5   ;Umschaltbit zw. Bank 0 & 1
+porta   equ 5   ;PORT A hat Adr. 5
+portb   equ 6   ;PORT B hat Adr. 6
+trisa   equ 5   ;TRIS A hat Adr. 5
+trisb   equ 6
+led     equ 0   ;LED an RA 0
+key     equ 0   ;Schalter an RB 0
+
+    device  16f84   ;Assembler direktive -> welcher Prozessor
+    org     0       ;Programm beginnt bei Adresse 0 (org -> origin)
+
+cold    ;LABEL
+init    ;LABEL init
+    bsf     status, rp0     ;Umschalten auf Bank 1
+    bcf     trisa, led      ;RA0 wird Ausgang (Bit ist in LED gespeichert)
+    bcf     status, rp0     ;Umschalten auf Bank 0
+loop
+    btfsc   portb, key      ;Skip nächsten Befehl wenn RB0=low
+    goto    ledaus
+ledein
+    bsf     porta, led      ;LED einschalten
+    goto    loop
+ledaus
+    bcf     porta, led      ;LED ausschalten
+    goto    loop
+
+    end     ;Assembler direktive -> Programm is zu Ende
+
+
+

@@ -1,0 +1,73 @@
+;***************************************
+;           Phasenschnitt.src
+;           02.11.2026
+;***************************************
+
+;**** VARIABLEN ****
+status  equ 3   ;Statusregister hat Adr. 3
+porta   equ 5   ;PORT A hat Adr. 5
+portb   equ 6   ;PORT B hat Adr. 6
+trisa   equ 5   ;TRIS A hat Adr. 5
+trisb   equ 6
+; Bits
+rp0     equ 5   ;Umschaltbit zw. Bank 0 & 1
+zerofl  equ 2   ;zeroflag im Statusregister (Bit 2)
+reset   equ 1   ;RESET Bit
+inhibit equ 2   ;INHIBIT Bit
+;Variablen
+schalter    equ 0   ;Schalter -> Zählvariable für Schalterstellung
+counter     equ 0   ;Counter
+
+    device 16f84
+    org 0
+
+cold
+init
+    bcf     portb, 5        ;Sicherstellen, das Ausgang 0 ist (bevor es als Ausgang festgelegt wird) -> Zündimpuls vermeiden
+    bsf     status, rp0     ;Umschalten auf Bank 1
+    bcf     trisb, 5        ;RB5 Ausgang, alles andere Eingang (ist per default Eingang)
+    bcf     status, rp0
+
+;Prüfen auf Nulldurchgang über Pin RB4 (High -> Nulldurchgang)
+warteNDG
+    btfss   portb, 4        ;ist Impuls da?
+    goto    warteNDG
+;Impuls ist da
+    call    delay166
+;Schalter einlesen & prüfen
+    movf    portb, w        ;PortB in w einlesen
+    andlw   00001111b       ;auf Schalter maskieren, beeinflusst zerofl
+    btfsc   status, zerofl
+    goto    warteNDG        ;Schalter auf 0000 -> Lampe aus
+    movwf   schalter
+;warten
+loop
+    call    delay625
+    decfsz  schalter        ;dekrementieren, skip if zero
+    goto    loop
+    bsf     portb, 5        ;Impuls erzeugen
+    call    delay166
+    bcf     portb, 5        ;abschalten nach 166µs
+    goto    warteNDG
+
+
+delay166
+    movlw   41              ;ergibt 165µs
+    movwf   counter
+delay166L
+    decf    counter
+    btfss   status, zerofl
+    goto delay166L
+    return
+
+delay625
+    movlw   156             ;ergibt 624µs
+    movwf   counter
+;   goto    delay166L       ;funktioniert alternativ auch
+delay625L
+    decf    counter
+    btfss   status, zerofl
+    goto delay625L
+    return
+
+    end

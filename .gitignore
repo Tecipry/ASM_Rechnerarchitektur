@@ -1,0 +1,9 @@
+# stuff vom Compiler
+*.bin
+*.ERR
+*.LST
+*.obj
+*.SRX
+*.SYM
+*.tdg
+*.ini
