@@ -1,0 +1,51 @@
+;***************************************
+;           Lauflicht.src
+;           09.11.2026
+;***************************************
+
+;**** VARIABLEN ****
+status  equ 3   ;Statusregister hat Adr. 3
+porta   equ 5   ;PORT A hat Adr. 5
+portb   equ 6   ;PORT B hat Adr. 6
+trisa   equ 5   ;TRIS A hat Adr. 5
+trisb   equ 6
+
+rp0     equ 5   ;Umschaltbit zw. Bank 0 & 1
+zerofl  equ 2   ;zeroflag im Statusregister (Bit 2)
+reset   equ 1   ;RESET Bit
+inhibit equ 2   ;INHIBIT Bit
+;Variablen
+counter     equ 0ch ;Counter
+
+    device 16f84
+    org 0
+
+cold
+init
+    bcf     portb, 5        ;Sicherstellen, das Ausgang 0 ist (bevor es als Ausgang festgelegt wird) -> Zündimpuls vermeiden
+    bsf     status, rp0     ;Umschalten auf Bank 1
+    clrf   trisb           ;RB0 - RB7 als Ausgang
+    bcf     status, rp0
+    incf    counter         ;counter auf 1 initialisieren
+
+loop
+;Schalterstellung testen
+    movf    porta, w        ;porta einlesen
+    andlw   00000001b       ;auf RA0 maskieren -> zerofl wenn ergebnis 0 ist
+                            ;wenn zerofl gesetzt, ist Schalter geschlossen (Siehe Schaltkreis)
+    btfss   status, zerofl
+    goto    s_geschl
+
+s_offen
+    RLF     counter
+    goto    weiter
+s_geschl
+    RRF     counter
+;PROBLEM: RLF & RRF loopen über carry -> der Ausgang ist zwischenzeitig aus
+
+weiter
+    movf    counter, w
+    movwf   portb
+    goto    loop
+
+    end
