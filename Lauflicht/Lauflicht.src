@@ -12,8 +12,7 @@ trisb   equ 6
 
 rp0     equ 5   ;Umschaltbit zw. Bank 0 & 1
 zerofl  equ 2   ;zeroflag im Statusregister (Bit 2)
-reset   equ 1   ;RESET Bit
-inhibit equ 2   ;INHIBIT Bit
+carry   equ 0   ;carry bit
 ;Variablen
 counter     equ 0ch ;Counter
 
@@ -44,8 +43,10 @@ s_geschl
 ;PROBLEM: RLF & RRF loopen über carry -> der Ausgang ist zwischenzeitig aus
 
 weiter
+    btfsc   status, carry   ;nicht auf portb schreiben, falls carry gesetzt
+    goto    loop            ;-> einfach nochmal in den loop
     movf    counter, w
-    movwf   portb
+    movwf   portb           ;counter auf portb schreiben
     goto    loop
 
     end
