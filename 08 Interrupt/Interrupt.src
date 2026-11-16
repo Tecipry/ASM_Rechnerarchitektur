@@ -61,7 +61,7 @@ int_t0
     movlw   240
     movwf   timer0
     BCF     intcon, t0if        ;Interruptflag von TM0 löschen -> muss innerhalb der ISR geschehen
-    goto int_end
+    goto    int_end
 
 int_rb0
     clrf    timer0              ;Timer0 einfach zurücksetzen
