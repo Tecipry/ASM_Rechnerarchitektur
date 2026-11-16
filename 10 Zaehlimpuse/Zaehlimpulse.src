@@ -1,0 +1,110 @@
+;***************************************
+;           Lauflicht.src
+;           16.11.2026
+;
+;Ein PIC16F84 soll externe Impulse an RA4 zählen. 
+;Die Impulse kommen unregelmäßig und mit ca. 200 Imp/min (max 250 Imp/min). 
+;Die Messzeit wird durch ein externes Signal RB0 mit fallender Flanke bestimmt. 
+;Beide Eingänge sollen per Interrupt abgefragt werden.
+;***************************************
+
+;**** VARIABLEN ****
+status  equ 3   ;Statusregister hat Adr. 3
+porta   equ 5   ;PORT A hat Adr. 5
+portb   equ 6   ;PORT B hat Adr. 6
+trisa   equ 5   ;TRIS A hat Adr. 5
+trisb   equ 6
+
+rp0     equ 5   ;Umschaltbit zw. Bank 0 & 1
+zerofl  equ 2   ;zeroflag im Statusregister (Bit 2)
+carry   equ 0   ;carry bit
+
+intcon  equ 0bh         ;INTCON Register
+option  equ 1           ;OPTION_REG Register
+t0ie    equ 5           ;t0ie Bit
+t0cs    equ 5           ;t0cs Bit
+t0se    equ 4           ;t0se Bit
+t0if    equ 2           ;t0if Bit
+psa     equ 3           ;psa Bit
+gie     equ 7           ;gie Bit (global Interrupt enable)
+intf    equ 1
+intedg  equ 6
+inte    equ 4
+
+;Variablen
+timer0  equ 01h         ;TMR0 Register (timer für Interrupts)
+counter equ 10h         ;counter, zählt vielfache von 256
+save_w  equ 20h         ;w-Register für ISR sichern
+save_s  equ 21h         ;statusregister sichern
+
+    device 16f84
+    org 0
+
+cold
+    goto    start
+    nop
+    nop
+    nop
+
+ISR
+;1. Register sichern (hier nicht nötig)
+;2. Quelle von Interrupt unterscheiden
+    btfsc   intcon, t0if        ;kommt Interrupt von TM0?
+    goto    int_tm0
+    btfsc   intcon, intf        ;kommt Interrupt von RB0?
+    goto    int_rb0
+    goto    int_end             ;sollte nicht auftreten
+
+int_tm0         ;HANDLING FÜR TM0
+    ;wenn dieser Interrupt ausgelöst wird, waren es 256 Impulse
+    incf    counter
+    bcf     intcon, t0if        ;Interruptflag zurücksetzen
+    goto    int_end
+
+
+int_rb0         ;HANDLING FÜR RB0
+    ;wenn TMR0 Interrupt inaktiv: aktivieren. Ansonsten deaktivieren
+    btfsc   intcon, t0ie        ;if clear -> t0ie ist aktuell deaktiviert
+    goto    t0ie_deak
+t0ie_ak         ;t0ie aktivieren
+    clrf    timer0
+    clrf    counter
+    BCF     intcon, t0if
+    BSF     intcon, t0ie
+    goto    t0ie_end
+t0ie_deak       ;t0ie deaktivieren
+    BCF     intcon, t0ie
+    ;Berechnung von Zählerstand: 256*counter + timer0
+    ;oder Bits von counter gefolgt von timer0 als 16Bit variable betrachten
+    goto    t0ie_end
+
+t0ie_end
+    bcf     intcon, intf        ;Interruptflag zurücksetzen
+    goto    int_end
+
+int_end
+    ;1. Zustand von w und status wiederherstellen (nicht nötig, da nichts gesichert wurde)
+    ;2. return
+    retfie
+
+
+start
+    bsf     status, rp0         ;Umschalten auf Bank 1
+
+    ;für TMR0 Interrupt
+    BSF     option, t0cs        ;RA4 als Takteingang
+    BCF     option, t0se        ;steigende Flanke -> aktive Flanke
+    BSF     option, psa         ;prescaler an watchdog, nicht an timer 0
+
+    ;für RB0 Interrupt
+    BCF     option, intedg      ;fallende Flanke an RB0
+
+    bcf     status, rp0         ;zurückschalten auf Bank 0
+
+    BCF     intcon, intf        ;Interruptflag RB0 zurücksetzen
+    BSF     intcon, inte        ;Interrupt an RB0 freigeben
+    BSF     intcon, gie         ;GIE aktivieren
+
+loop
+    goto loop
+
