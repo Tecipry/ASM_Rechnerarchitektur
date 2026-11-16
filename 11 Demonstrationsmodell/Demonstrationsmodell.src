@@ -1,0 +1,83 @@
+;***************************************
+;           Lauflicht.src
+;           16.11.2026
+;
+;Ein PIC16F84 soll externe Impulse an RA4 zählen. 
+;Die Impulse kommen unregelmäßig und mit ca. 200 Imp/min (max 250 Imp/min). 
+;Die Messzeit wird durch ein externes Signal RB0 mit fallender Flanke bestimmt. 
+;Beide Eingänge sollen per Interrupt abgefragt werden.
+;***************************************
+
+;**** VARIABLEN ****
+status  equ 3   ;Statusregister hat Adr. 3
+porta   equ 5   ;PORT A hat Adr. 5
+portb   equ 6   ;PORT B hat Adr. 6
+trisa   equ 5   ;TRIS A hat Adr. 5
+trisb   equ 6
+
+rp0     equ 5   ;Umschaltbit zw. Bank 0 & 1
+
+;Variablen
+var0    equ 10h
+var1    equ 11h
+result  equ 12h
+
+    device 16f84
+    org 0
+
+init
+    ;RB0-7 sind per default bereits Eingang
+;    bcf     trisa, 0
+;    bcf     trisa, 1
+;    bcf     trisa, 2    ;RA0-2 auf Ausgang
+    bsf     status, rp0
+    clrf    trisa
+    bcf     status, rp0
+
+loop
+    ;VAR1, VAR0 einlesen
+    movf    portb, w    ;portb in w einlesen
+    andlw   00000111b   ;auf VAR0 maskieren
+    movwf   var0
+    movf    portb, w
+    andlw   00111000b   ;auf VAR1 maskieren
+    movwf   var1
+    rrf     var1
+    rrf     var1
+    rrf     var1        ; 3x rotate rechts -> var1 liegt in niedersten 3 Bits
+
+cases
+    btfsc   portb, 7
+    goto    rb1_
+    goto    rb0_
+
+rb0_
+    btfsc   portb, 6
+    goto    rb01
+    goto    rb00
+rb1_
+    btfsc   portb, 6
+    goto    rb11
+    goto    rb10
+
+
+rb00            ;not VAR1 
+    comf    var1, w
+    andlw   00000111b   ;maskieren, um 1er aus Komplement wieder zu entfernen
+    goto    final
+rb01            ;VAR0 and VAR1
+    movf    var0, 0
+    andwf   var1
+    goto    final
+rb10            ;VAR0 or VAR1
+    movf    var0, 0
+    iorwf   var1, 0
+    goto    final
+rb11            ;VOR0 xor VAR1
+    movf    var0, 0
+    xorwf   var1, 0
+    goto    final
+
+final           ;result liegt in w
+    movwf   porta   ;w auf Ausgang legen
+    goto    loop
